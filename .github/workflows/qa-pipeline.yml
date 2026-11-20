@@ -1,0 +1,49 @@
+name: FinTech API QA & Security Gate
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  static-and-security:
+    name: "1. Lint & Security Audit"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install ruff bandit
+      - run: ruff check app/ tests/
+      - run: bandit -r app/ -ll
+
+  contract-and-e2e-api:
+    name: "2. Contract, Idempotency & Tenant Isolation Tests"
+    needs: static-and-security
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+      - run: pip install -r requirements.txt
+      - name: Start FinTech API service
+        run: |
+          nohup uvicorn app.service:app --host 127.0.0.1 --port 8000 > server.log 2>&1 &
+          for i in {1..15}; do
+            if curl -s http://127.0.0.1:8000/health > /dev/null; then
+              break
+            fi
+            sleep 1
+          done
+      - name: Execute API QA Suite
+        run: pytest tests/ -v --junitxml=qa-report.xml
+      - name: Publish JUnit Report Artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fintech-qa-report
+          path: qa-report.xml
