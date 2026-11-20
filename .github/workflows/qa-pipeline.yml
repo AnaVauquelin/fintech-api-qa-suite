@@ -1,4 +1,4 @@
-name: FinTech API QA & Security Gate
+name: FinTech API QA, Docker & IaC Gate
 
 on:
   push:
@@ -19,31 +19,28 @@ jobs:
       - run: ruff check app/ tests/
       - run: bandit -r app/ -ll
 
-  contract-and-e2e-api:
-    name: "2. Contract, Idempotency & Tenant Isolation Tests"
-    needs: static-and-security
+  terraform-iac-check:
+    name: "2. Terraform IaC Validation"
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-          cache: "pip"
-      - run: pip install -r requirements.txt
-      - name: Start FinTech API service
+      - uses: hashicorp/setup-terraform@v3
+      - name: Terraform Format & Validate
+        working-directory: infra/terraform
         run: |
-          nohup uvicorn app.service:app --host 127.0.0.1 --port 8000 > server.log 2>&1 &
-          for i in {1..15}; do
-            if curl -s http://127.0.0.1:8000/health > /dev/null; then
-              break
-            fi
-            sleep 1
-          done
-      - name: Execute API QA Suite
-        run: pytest tests/ -v --junitxml=qa-report.xml
-      - name: Publish JUnit Report Artifact
+          terraform fmt -check
+          terraform init -backend=false
+          terraform validate
+
+  docker-compose-e2e:
+    name: "3. Docker Compose Containerized QA Suite"
+    needs: [static-and-security, terraform-iac-check]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run API + Redis + Pytest in Docker Compose
+        run: |
+          docker compose up --build --abort-on-container-exit --exit-code-from qa-runner
+      - name: Tear down containers
         if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: fintech-qa-report
-          path: qa-report.xml
+        run: docker compose down -v
