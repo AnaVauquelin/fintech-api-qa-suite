@@ -1,4 +1,5 @@
-from typing import Dict, List, Optional
+from __future__ import annotations
+
 from fastapi import FastAPI, Header, HTTPException
 from pydantic import BaseModel, Field
 
@@ -11,8 +12,8 @@ VAT_RATES = {
     "PL": 0.23,
 }
 
-PROCESSED_KEYS: Dict[str, dict] = {}
-TRANSACTIONS: List[dict] = []
+PROCESSED_KEYS: dict[str, dict] = {}
+TRANSACTIONS: list[dict] = []
 
 
 class InvoiceRequest(BaseModel):
@@ -31,8 +32,8 @@ def health():
 @app.post("/v1/invoices/calculate")
 def create_invoice(
     payload: InvoiceRequest,
-    idempotency_key: Optional[str] = Header(default=None, alias="Idempotency-Key"),
-    x_tenant_id: Optional[str] = Header(default=None, alias="X-Tenant-ID"),
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+    x_tenant_id: str | None = Header(default=None, alias="X-Tenant-ID"),
 ):
     if not x_tenant_id or x_tenant_id != payload.tenant_id:
         raise HTTPException(status_code=403, detail="Tenant isolation violation")
@@ -71,7 +72,7 @@ def create_invoice(
 
 
 @app.get("/v1/invoices")
-def list_invoices(x_tenant_id: Optional[str] = Header(default=None, alias="X-Tenant-ID")):
+def list_invoices(x_tenant_id: str | None = Header(default=None, alias="X-Tenant-ID")):
     if not x_tenant_id:
         raise HTTPException(status_code=401, detail="Unauthorized tenant")
     return [tx for tx in TRANSACTIONS if tx["tenant_id"] == x_tenant_id]
